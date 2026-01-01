@@ -1,10 +1,11 @@
 # termshare
 
 ![Rust](https://img.shields.io/badge/Rust-000000?style=flat&logo=rust&logoColor=white)
+![License](https://img.shields.io/badge/License-MIT-blue.svg)
 
 A simple CLI tool to share your terminal session over the web.
 
-https://github.com/user-attachments/assets/termshare-demo.mp4
+https://github.com/user-attachments/assets/9369c647-bf03-4ae7-a2ef-6824f6f0ac5e
 
 ```bash
 # Install
@@ -30,9 +31,9 @@ This starts a web server and gives you a URL. Anyone with the link can watch you
 - `--expose` - Expose to local network
 - `-p <port>` - Set port (default: 3001)
 
-![password-required](Docs/password-required.png)
-![session-full](Docs/session-full.png)
-![disconnected](Docs/disconnected.png)
+![password-required](docs/password-required.png)
+![session-full](docs/session-full.png)
+![disconnected](docs/disconnected.png)
 
 ```bash
 **Example**
