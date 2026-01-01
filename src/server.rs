@@ -88,6 +88,8 @@ pub struct ServerState {
     pub allow_input: bool,
     /// Maximum number of concurrent viewers (None = unlimited)
     pub max_viewers: Option<usize>,
+    /// Channel for viewer connect/disconnect notifications
+    pub notification_tx: broadcast::Sender<String>,
 }
 
 impl ServerState {
@@ -98,6 +100,7 @@ impl ServerState {
         max_viewers: Option<usize>,
     ) -> Self {
         let (output_tx, _) = broadcast::channel(1024);
+        let (notification_tx, _) = broadcast::channel(16);
         let session_id = generate_session_id();
 
         Self {
@@ -111,6 +114,7 @@ impl ServerState {
             valid_tokens: RwLock::new(HashSet::new()),
             allow_input,
             max_viewers,
+            notification_tx,
         }
     }
 
@@ -340,11 +344,12 @@ async fn websocket_handler(
 
 /// Handle an individual WebSocket connection
 async fn handle_socket(socket: WebSocket, state: Arc<ServerState>) {
-    // Increment viewer count
+    // Increment viewer count and send notification
     {
         let mut count = state.viewer_count.write().await;
         *count += 1;
         tracing::info!("Viewer connected. Total viewers: {}", *count);
+        let _ = state.notification_tx.send(format!("Viewer connected ({} total)", *count));
     }
 
     // Subscribe to terminal output broadcasts
@@ -420,11 +425,12 @@ async fn handle_socket(socket: WebSocket, state: Arc<ServerState>) {
         _ = recv_task => {},
     }
 
-    // Decrement viewer count
+    // Decrement viewer count and send notification
     {
         let mut count = state.viewer_count.write().await;
         *count -= 1;
         tracing::info!("Viewer disconnected. Total viewers: {}", *count);
+        let _ = state.notification_tx.send(format!("Viewer disconnected ({} total)", *count));
     }
 }
 

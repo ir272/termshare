@@ -247,6 +247,9 @@ async fn run_session(
         }
     });
 
+    // Subscribe to viewer notifications
+    let mut notification_rx = state.notification_tx.subscribe();
+
     // Main event loop
     loop {
         // Check for PTY output (non-blocking)
@@ -262,6 +265,16 @@ async fn run_session(
         while let Ok(input) = viewer_input_rx.try_recv() {
             // Send viewer input to PTY
             pty.write(&input)?;
+        }
+
+        // Check for viewer notifications (non-blocking)
+        while let Ok(notification) = notification_rx.try_recv() {
+            // Format notification with yellow color
+            let styled = format!("\r\n\x1b[33m[TermShare] {}\x1b[0m\r\n", notification);
+            // Display locally
+            write_stdout(styled.as_bytes())?;
+            // Broadcast to viewers
+            state.broadcast_output(styled.as_bytes()).await;
         }
 
         // Check for local keyboard input
