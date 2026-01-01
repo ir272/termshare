@@ -43,6 +43,35 @@
             font-size: 0.9rem;
         }
 
+        .controls {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .control-btn {
+            background: #0f3460;
+            border: none;
+            color: #eee;
+            width: 28px;
+            height: 28px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s;
+        }
+
+        .control-btn:hover {
+            background: #1a4a7a;
+        }
+
+        .control-btn:active {
+            background: #0a2540;
+        }
+
         .status-dot {
             width: 8px;
             height: 8px;
@@ -216,6 +245,23 @@
             font-size: 3rem;
             margin-bottom: 15px;
         }
+
+        .reconnect-btn {
+            margin-top: 20px;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            background: #e94560;
+            color: white;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .reconnect-btn:hover {
+            background: #d63850;
+        }
     </style>
 </head>
 <body>
@@ -228,6 +274,11 @@
             </span>
             <span class="viewer-count" id="viewer-count"></span>
             <span class="input-mode" id="input-mode"></span>
+            <div class="controls">
+                <button class="control-btn" id="font-decrease" title="Decrease font size">−</button>
+                <button class="control-btn" id="font-increase" title="Increase font size">+</button>
+                <button class="control-btn" id="fullscreen-btn" title="Toggle fullscreen">⛶</button>
+            </div>
         </div>
     </header>
 
@@ -269,10 +320,15 @@
         // Auth token storage
         let authToken = localStorage.getItem('termshare_token') || '';
 
+        // Font size settings
+        let fontSize = 14;
+        const MIN_FONT_SIZE = 10;
+        const MAX_FONT_SIZE = 24;
+
         // Initialize xterm.js
         const term = new Terminal({
             cursorBlink: true,
-            fontSize: 14,
+            fontSize: fontSize,
             fontFamily: 'Menlo, Monaco, "Courier New", monospace',
             theme: {
                 background: '#1a1a2e',
@@ -291,6 +347,37 @@
         // Handle window resize
         window.addEventListener('resize', () => {
             fitAddon.fit();
+        });
+
+        // Font size controls
+        document.getElementById('font-decrease').addEventListener('click', () => {
+            if (fontSize > MIN_FONT_SIZE) {
+                fontSize -= 2;
+                term.options.fontSize = fontSize;
+                fitAddon.fit();
+            }
+        });
+
+        document.getElementById('font-increase').addEventListener('click', () => {
+            if (fontSize < MAX_FONT_SIZE) {
+                fontSize += 2;
+                term.options.fontSize = fontSize;
+                fitAddon.fit();
+            }
+        });
+
+        // Fullscreen toggle
+        document.getElementById('fullscreen-btn').addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        // Refit terminal when exiting fullscreen
+        document.addEventListener('fullscreenchange', () => {
+            setTimeout(() => fitAddon.fit(), 100);
         });
 
         // UI elements
@@ -439,7 +526,8 @@
                     overlay.classList.remove('hidden');
                     overlayContent.innerHTML = `
                         <h2>Session Full</h2>
-                        <p>This session has reached its maximum number of viewers. Please try again later.</p>
+                        <p>This session has reached its maximum number of viewers.</p>
+                        <button class="reconnect-btn" onclick="manualReconnect()">Try Again</button>
                     `;
                     return;
                 }
@@ -454,6 +542,7 @@
                     overlayContent.innerHTML = `
                         <h2>Disconnected</h2>
                         <p>The terminal session has ended or connection was lost.</p>
+                        <button class="reconnect-btn" onclick="manualReconnect()">Reconnect</button>
                     `;
                 }
             };
@@ -507,6 +596,18 @@
                     data: encoded
                 }));
             }
+        }
+
+        // Manual reconnect function (called from button)
+        function manualReconnect() {
+            reconnectAttempts = 0;
+            overlay.classList.remove('hidden');
+            overlayContent.innerHTML = `
+                <h2>Connecting...</h2>
+                <p>Establishing connection to terminal session</p>
+                <div class="spinner"></div>
+            `;
+            connect();
         }
 
         // Start by checking auth status
