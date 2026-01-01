@@ -47,6 +47,10 @@ struct Args {
     /// Create a public tunnel (share over the internet with HTTPS)
     #[arg(long)]
     public: bool,
+
+    /// Run a specific command instead of the default shell
+    #[arg(short = 'c', long)]
+    command: Option<String>,
 }
 
 /// Get the local IP address for LAN sharing
@@ -162,8 +166,15 @@ async fn main() -> Result<()> {
     println!("Session ID: {}", session_id);
     println!("Password protected: {}", if password.is_some() { "Yes" } else { "No" });
     println!("Viewer input: {}", if args.allow_input { "Enabled" } else { "View only" });
+    if let Some(ref cmd) = args.command {
+        println!("Command: {}", cmd);
+    }
     println!();
-    println!("Starting shell session...");
+    if args.command.is_some() {
+        println!("Starting command...");
+    } else {
+        println!("Starting shell session...");
+    }
     println!("Press Ctrl+Q to exit");
     println!();
 
@@ -182,7 +193,7 @@ async fn main() -> Result<()> {
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     // Run the main terminal session
-    run_session(state, viewer_input_rx).await?;
+    run_session(state, viewer_input_rx, args.command).await?;
 
     println!();
     println!("Session ended. Goodbye!");
@@ -193,9 +204,10 @@ async fn main() -> Result<()> {
 async fn run_session(
     state: Arc<ServerState>,
     mut viewer_input_rx: tokio::sync::mpsc::Receiver<Vec<u8>>,
+    command: Option<String>,
 ) -> Result<()> {
-    // Create the PTY session (spawns a shell)
-    let mut pty = PtySession::new()?;
+    // Create the PTY session (spawns shell or custom command)
+    let mut pty = PtySession::new(command.as_deref())?;
 
     // Enable raw mode
     let _raw_guard = RawModeGuard::new()?;

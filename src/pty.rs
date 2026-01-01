@@ -25,11 +25,11 @@ pub struct PtySession {
 }
 
 impl PtySession {
-    /// Create a new PTY session with a shell
+    /// Create a new PTY session with a shell or custom command
     ///
-    /// This spawns a new shell (uses $SHELL or defaults to /bin/sh)
-    /// inside a pseudo-terminal that we control.
-    pub fn new() -> Result<Self> {
+    /// If `command` is None, spawns the user's default shell.
+    /// If `command` is Some, runs that command through sh -c.
+    pub fn new(command: Option<&str>) -> Result<Self> {
         // Get the native PTY system for this OS
         let pty_system = native_pty_system();
 
@@ -41,19 +41,25 @@ impl PtySession {
             .openpty(size)
             .context("Failed to open PTY")?;
 
-        // Get the user's preferred shell, or fall back to /bin/sh
-        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
+        // Build the command based on whether a custom command was provided
+        let cmd = if let Some(user_cmd) = command {
+            // Run custom command through shell to handle pipes, redirects, etc.
+            let mut cmd = CommandBuilder::new("sh");
+            cmd.args(["-c", user_cmd]);
+            cmd
+        } else {
+            // Default: run user's preferred shell as login shell
+            let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
+            let mut cmd = CommandBuilder::new(&shell);
+            cmd.arg("-l");
+            cmd
+        };
 
-        // Build the command to run the shell
-        let mut cmd = CommandBuilder::new(&shell);
-        // Start as a login shell for proper initialization
-        cmd.arg("-l");
-
-        // Spawn the shell in the PTY
+        // Spawn the command in the PTY
         let _child = pair
             .slave
             .spawn_command(cmd)
-            .context("Failed to spawn shell")?;
+            .context("Failed to spawn command")?;
 
         // Get handles to read from and write to the PTY
         let writer = pair.master.take_writer()
@@ -141,7 +147,7 @@ mod tests {
     fn test_pty_creation() {
         // This test verifies we can create a PTY session
         // Note: This might fail in CI environments without a proper terminal
-        let result = PtySession::new();
+        let result = PtySession::new(None);
         // We just check it doesn't panic - actual functionality
         // requires a real terminal environment
         assert!(result.is_ok() || result.is_err());
