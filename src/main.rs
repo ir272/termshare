@@ -10,6 +10,7 @@ mod terminal;
 use anyhow::Result;
 use clap::Parser;
 use std::io::Read;
+use std::net::UdpSocket;
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
@@ -33,6 +34,19 @@ struct Args {
     /// Require password to view the session
     #[arg(long)]
     password: bool,
+
+    /// Expose to local network (bind to 0.0.0.0 instead of localhost)
+    #[arg(long)]
+    expose: bool,
+}
+
+/// Get the local IP address for LAN sharing
+fn get_local_ip() -> Option<String> {
+    // Create a UDP socket and "connect" to an external IP
+    // This doesn't send any data, but lets us see which local IP would be used
+    let socket = UdpSocket::bind("0.0.0.0:0").ok()?;
+    socket.connect("8.8.8.8:80").ok()?;
+    socket.local_addr().ok().map(|addr| addr.ip().to_string())
 }
 
 #[tokio::main]
@@ -67,12 +81,29 @@ async fn main() -> Result<()> {
     let state = Arc::new(ServerState::new(viewer_input_tx, password.clone()));
     let session_id = state.session_id.clone();
 
+    // Warn if exposing without password
+    if args.expose && password.is_none() {
+        println!();
+        println!("⚠️  WARNING: Exposing to network without password protection!");
+        println!("   Anyone on your network can view this terminal.");
+        println!("   Consider using --password for security.");
+    }
+
     // Print startup banner
     println!();
     println!("TermShare v0.1.0 - Terminal Sharing Tool");
     println!("=========================================");
     println!();
-    println!("Share URL: http://localhost:{}", args.port);
+    if args.expose {
+        println!("Local URL:   http://localhost:{}", args.port);
+        if let Some(ip) = get_local_ip() {
+            println!("Network URL: http://{}:{}", ip, args.port);
+        }
+    } else {
+        println!("Share URL: http://localhost:{}", args.port);
+        println!("(Use --expose to allow network access)");
+    }
+    println!();
     println!("Session ID: {}", session_id);
     println!("Password protected: {}", if password.is_some() { "Yes" } else { "No" });
     println!();
@@ -83,8 +114,9 @@ async fn main() -> Result<()> {
     // Start web server in background
     let server_state = state.clone();
     let port = args.port;
+    let expose = args.expose;
     tokio::spawn(async move {
-        if let Err(e) = server::start_server(server_state, port).await {
+        if let Err(e) = server::start_server(server_state, port, expose).await {
             tracing::error!("Server error: {}", e);
         }
     });

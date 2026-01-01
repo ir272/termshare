@@ -440,9 +440,15 @@ fn base64_decode(data: &str) -> Result<Vec<u8>, ()> {
 }
 
 /// Start the web server
-pub async fn start_server(state: Arc<ServerState>, port: u16) -> anyhow::Result<()> {
+pub async fn start_server(state: Arc<ServerState>, port: u16, expose: bool) -> anyhow::Result<()> {
     let app = create_router(state);
-    let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
+
+    // Bind to 0.0.0.0 (all interfaces) if exposed, otherwise localhost only
+    let addr = if expose {
+        std::net::SocketAddr::from(([0, 0, 0, 0], port))
+    } else {
+        std::net::SocketAddr::from(([127, 0, 0, 1], port))
+    };
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
     tracing::info!("Server listening on http://{}", addr);
