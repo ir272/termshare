@@ -60,8 +60,11 @@ async fn main() -> Result<()> {
         .init();
 
     let password = if args.password {
-        println!("Enter session password: ");
-        let pass = rpassword::read_password()?;
+        print!("Enter session password: ");
+        std::io::Write::flush(&mut std::io::stdout())?;
+        let mut pass = String::new();
+        std::io::stdin().read_line(&mut pass)?;
+        let pass = pass.trim().to_string();
         if pass.is_empty() {
             println!("Warning: Empty password provided. Session will be unprotected.");
             None
