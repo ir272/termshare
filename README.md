@@ -20,7 +20,7 @@ termshare
 termshare --public
 ```
 
-This starts a web server and gives you a URL. Anyone with the link can watch your terminal live.
+This starts a web server and gives you a URL. Anyone with the link can watch your terminal live (unless there's a password or maximum viewer count).
 
 **Options:**
 - `--password` - Require password to view
@@ -31,11 +31,13 @@ This starts a web server and gives you a URL. Anyone with the link can watch you
 - `--expose` - Expose to local network
 - `-p <port>` - Set port (default: 3001)
 
+```bash
 # Password protected with viewer input
 termshare --public --password --allow-input
 
 # Run a specific command
 termshare -c "htop"
+```
 
 Press `Ctrl+Q` to exit.
 
