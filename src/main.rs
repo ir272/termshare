@@ -1,8 +1,3 @@
-//! TermShare - Share your terminal with others in real-time
-//!
-//! Run `termshare` to start a terminal session that can be viewed
-//! by others in their web browser.
-
 mod pty;
 mod server;
 mod terminal;
@@ -22,45 +17,34 @@ use crate::terminal::{read_event, write_stdout, RawModeGuard, TerminalEvent};
 
 const DEFAULT_PORT: u16 = 3001;
 
-/// TermShare - Share your terminal with others in real-time
 #[derive(Parser, Debug)]
 #[command(name = "termshare")]
 #[command(version = "0.1.0")]
 #[command(about = "Share your terminal with others in real-time")]
 struct Args {
-    /// Port to run the server on
     #[arg(short, long, default_value_t = DEFAULT_PORT)]
     port: u16,
 
-    /// Require password to view the session
-    #[arg(long)]
+    #[arg(long, help = "Require password to view the session")]
     password: bool,
 
-    /// Expose to local network (bind to 0.0.0.0 instead of localhost)
-    #[arg(long)]
+    #[arg(long, help = "Expose to local network (bind to 0.0.0.0)")]
     expose: bool,
 
-    /// Allow viewers to send input to the terminal
-    #[arg(long)]
+    #[arg(long, help = "Allow viewers to send input to the terminal")]
     allow_input: bool,
 
-    /// Create a public tunnel (share over the internet with HTTPS)
-    #[arg(long)]
+    #[arg(long, help = "Create a public tunnel (share over the internet)")]
     public: bool,
 
-    /// Run a specific command instead of the default shell
-    #[arg(short = 'c', long)]
+    #[arg(short = 'c', long, help = "Run a specific command instead of shell")]
     command: Option<String>,
 
-    /// Maximum number of concurrent viewers
-    #[arg(long)]
+    #[arg(long, help = "Maximum number of concurrent viewers")]
     max_viewers: Option<usize>,
 }
 
-/// Get the local IP address for LAN sharing
 fn get_local_ip() -> Option<String> {
-    // Create a UDP socket and "connect" to an external IP
-    // This doesn't send any data, but lets us see which local IP would be used
     let socket = UdpSocket::bind("0.0.0.0:0").ok()?;
     socket.connect("8.8.8.8:80").ok()?;
     socket.local_addr().ok().map(|addr| addr.ip().to_string())
@@ -68,16 +52,13 @@ fn get_local_ip() -> Option<String> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Parse CLI arguments
     let args = Args::parse();
 
-    // Initialize logging
     tracing_subscriber::fmt()
         .with_env_filter("termshare=info")
         .with_writer(std::io::stderr)
         .init();
 
-    // Get password if requested
     let password = if args.password {
         println!("Enter session password: ");
         let pass = rpassword::read_password()?;
@@ -91,10 +72,8 @@ async fn main() -> Result<()> {
         None
     };
 
-    // Create channel for viewer input
     let (viewer_input_tx, viewer_input_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(100);
 
-    // Create server state with optional password, input permission, and viewer limit
     let state = Arc::new(ServerState::new(
         viewer_input_tx,
         password.clone(),
@@ -103,7 +82,7 @@ async fn main() -> Result<()> {
     ));
     let session_id = state.session_id.clone();
 
-    // Warn if exposing without password
+    // Security warnings
     if args.expose && password.is_none() {
         println!();
         println!("⚠️  WARNING: Exposing to network without password protection!");
@@ -111,7 +90,6 @@ async fn main() -> Result<()> {
         println!("   Consider using --password for security.");
     }
 
-    // Warn if allowing input without password
     if args.allow_input && password.is_none() {
         println!();
         println!("⚠️  WARNING: Input enabled without password protection!");
@@ -119,7 +97,6 @@ async fn main() -> Result<()> {
         println!("   Strongly consider using --password for security.");
     }
 
-    // Warn if public without password
     if args.public && password.is_none() {
         println!();
         println!("⚠️  WARNING: Public sharing without password protection!");
@@ -127,7 +104,6 @@ async fn main() -> Result<()> {
         println!("   Strongly consider using --password for security.");
     }
 
-    // Start public tunnel if requested
     let _tunnel = if args.public {
         println!();
         println!("Starting public tunnel...");
@@ -146,13 +122,12 @@ async fn main() -> Result<()> {
         None
     };
 
-    // Print startup banner
+    // Startup banner
     println!();
     println!("TermShare v0.1.0 - Terminal Sharing Tool");
     println!("=========================================");
     println!();
 
-    // Show URLs based on mode
     if let Some(ref t) = _tunnel {
         println!("🌐 Public URL: {}", t.url);
         println!("   (HTTPS secured, anyone can connect)");
@@ -188,8 +163,6 @@ async fn main() -> Result<()> {
     println!("Press Ctrl+Q to exit");
     println!();
 
-    // Start web server in background
-    // Enable expose if public tunnel is active (need to bind to 0.0.0.0)
     let server_state = state.clone();
     let port = args.port;
     let expose = args.expose || args.public;
@@ -199,13 +172,11 @@ async fn main() -> Result<()> {
         }
     });
 
-    // Small delay to let server start
     tokio::time::sleep(Duration::from_millis(100)).await;
 
-    // Run the main terminal session
     run_session(state.clone(), viewer_input_rx, args.command).await?;
 
-    // Print session statistics
+    // Session statistics
     let duration = state.session_start.elapsed();
     let mins = duration.as_secs() / 60;
     let secs = duration.as_secs() % 60;
@@ -232,25 +203,17 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-/// Run the main terminal session with network sharing
 async fn run_session(
     state: Arc<ServerState>,
     mut viewer_input_rx: tokio::sync::mpsc::Receiver<Vec<u8>>,
     command: Option<String>,
 ) -> Result<()> {
-    // Create the PTY session (spawns shell or custom command)
     let mut pty = PtySession::new(command.as_deref())?;
-
-    // Enable raw mode
     let _raw_guard = RawModeGuard::new()?;
 
-    // Create channel for PTY output
     let (pty_output_tx, pty_output_rx) = std::sync::mpsc::channel::<Vec<u8>>();
-
-    // Clone PTY reader for the reader thread
     let mut pty_reader = pty.try_clone_reader()?;
 
-    // Spawn thread to read PTY output
     let reader_handle = thread::spawn(move || {
         let mut buf = [0u8; 4096];
         loop {
@@ -269,37 +232,24 @@ async fn run_session(
         }
     });
 
-    // Subscribe to viewer notifications
     let mut notification_rx = state.notification_tx.subscribe();
 
-    // Main event loop
     loop {
-        // Check for PTY output (non-blocking)
         while let Ok(output) = pty_output_rx.try_recv() {
-            // Display locally
             write_stdout(&output)?;
-
-            // Broadcast to viewers (and store in buffer)
             state.broadcast_output(&output).await;
         }
 
-        // Check for viewer input (non-blocking)
         while let Ok(input) = viewer_input_rx.try_recv() {
-            // Send viewer input to PTY
             pty.write(&input)?;
         }
 
-        // Check for viewer notifications (non-blocking)
         while let Ok(notification) = notification_rx.try_recv() {
-            // Format notification with yellow color
             let styled = format!("\r\n\x1b[33m[TermShare] {}\x1b[0m\r\n", notification);
-            // Display locally
             write_stdout(styled.as_bytes())?;
-            // Broadcast to viewers
             state.broadcast_output(styled.as_bytes()).await;
         }
 
-        // Check for local keyboard input
         if let Some(event) = read_event(Duration::from_millis(10))? {
             match event {
                 TerminalEvent::Key(bytes) => {
@@ -310,18 +260,15 @@ async fn run_session(
                 }
                 TerminalEvent::Resize { cols, rows } => {
                     pty.resize(cols, rows)?;
-                    // Broadcast resize to viewers
                     state.broadcast_resize(cols, rows).await;
                 }
             }
         }
 
-        // Check if PTY reader finished (shell exited)
         if reader_handle.is_finished() {
             break;
         }
 
-        // Small yield to prevent busy loop
         tokio::task::yield_now().await;
     }
 

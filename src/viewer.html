@@ -192,7 +192,6 @@
             to { transform: rotate(360deg); }
         }
 
-        /* Password form styles */
         .auth-form {
             display: flex;
             flex-direction: column;
@@ -291,7 +290,6 @@
         <a href="https://github.com/ir272/terminal-share">TermShare</a>
     </footer>
 
-    <!-- Loading/Connecting overlay -->
     <div class="overlay" id="overlay">
         <div class="overlay-content" id="overlay-content">
             <h2>Connecting...</h2>
@@ -300,7 +298,6 @@
         </div>
     </div>
 
-    <!-- Password overlay (hidden by default) -->
     <div class="overlay hidden" id="auth-overlay">
         <div class="overlay-content">
             <div class="lock-icon">🔒</div>
@@ -317,15 +314,11 @@
     <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
     <script>
-        // Auth token storage
         let authToken = localStorage.getItem('termshare_token') || '';
-
-        // Font size settings
         let fontSize = 14;
         const MIN_FONT_SIZE = 10;
         const MAX_FONT_SIZE = 24;
 
-        // Initialize xterm.js
         const term = new Terminal({
             cursorBlink: true,
             fontSize: fontSize,
@@ -344,12 +337,8 @@
         term.open(document.getElementById('terminal'));
         fitAddon.fit();
 
-        // Handle window resize
-        window.addEventListener('resize', () => {
-            fitAddon.fit();
-        });
+        window.addEventListener('resize', () => fitAddon.fit());
 
-        // Font size controls
         document.getElementById('font-decrease').addEventListener('click', () => {
             if (fontSize > MIN_FONT_SIZE) {
                 fontSize -= 2;
@@ -366,7 +355,6 @@
             }
         });
 
-        // Fullscreen toggle
         document.getElementById('fullscreen-btn').addEventListener('click', () => {
             if (!document.fullscreenElement) {
                 document.documentElement.requestFullscreen();
@@ -375,12 +363,10 @@
             }
         });
 
-        // Refit terminal when exiting fullscreen
         document.addEventListener('fullscreenchange', () => {
             setTimeout(() => fitAddon.fit(), 100);
         });
 
-        // UI elements
         const overlay = document.getElementById('overlay');
         const overlayContent = document.getElementById('overlay-content');
         const authOverlay = document.getElementById('auth-overlay');
@@ -393,35 +379,29 @@
         const viewerCount = document.getElementById('viewer-count');
         const inputMode = document.getElementById('input-mode');
 
-        // Input state
         let inputAllowed = false;
         let inputConnected = false;
 
-        // WebSocket connection
         const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const wsUrl = `${wsProtocol}//${window.location.host}/ws`;
         let ws = null;
         let reconnectAttempts = 0;
         const maxReconnectAttempts = 5;
 
-        // Check auth status on load
         async function checkAuthStatus() {
             try {
                 const response = await fetch(`/auth/status?token=${encodeURIComponent(authToken)}`);
                 const data = await response.json();
 
                 if (data.requires_auth && !data.authenticated) {
-                    // Show password form
                     overlay.classList.add('hidden');
                     authOverlay.classList.remove('hidden');
                     passwordInput.focus();
                 } else {
-                    // No auth required or already authenticated
                     connect();
                 }
             } catch (e) {
                 console.error('Failed to check auth status:', e);
-                // Show error - don't bypass auth
                 overlay.classList.remove('hidden');
                 overlayContent.innerHTML = `
                     <h2>Connection Error</h2>
@@ -430,7 +410,6 @@
             }
         }
 
-        // Handle password form submission
         authForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             const password = passwordInput.value;
@@ -447,16 +426,13 @@
             try {
                 const response = await fetch('/auth', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ password }),
                 });
 
                 const data = await response.json();
 
                 if (data.success) {
-                    // Store token and connect
                     authToken = data.token || '';
                     localStorage.setItem('termshare_token', authToken);
                     authOverlay.classList.add('hidden');
@@ -482,7 +458,6 @@
         }
 
         function connect() {
-            // Include auth token in WebSocket URL
             const wsUrlWithToken = authToken ? `${wsUrl}?token=${encodeURIComponent(authToken)}` : wsUrl;
             ws = new WebSocket(wsUrlWithToken);
 
@@ -495,13 +470,8 @@
                 reconnectAttempts = 0;
             };
 
-            // Handle connection errors (including 503 session full)
-            ws.onerror = (error) => {
-                console.error('WebSocket error:', error);
-            };
+            ws.onerror = (error) => console.error('WebSocket error:', error);
 
-            // Note: 503 rejection happens before WebSocket opens, so we detect it
-            // by checking if we never connected and got an immediate close
             let wasConnected = false;
             ws.addEventListener('open', () => { wasConnected = true; });
 
@@ -520,8 +490,7 @@
                 statusDot.classList.add('disconnected');
                 statusText.textContent = 'Disconnected';
 
-                // Check if this was an immediate rejection (never connected)
-                // HTTP 503 results in code 1006 with immediate close
+                // 503 rejection happens before WebSocket opens
                 if (!wasConnected && reconnectAttempts === 0) {
                     overlay.classList.remove('hidden');
                     overlayContent.innerHTML = `
@@ -532,7 +501,6 @@
                     return;
                 }
 
-                // Try to reconnect
                 if (reconnectAttempts < maxReconnectAttempts) {
                     reconnectAttempts++;
                     setTimeout(connect, 2000 * reconnectAttempts);
@@ -551,9 +519,7 @@
         function handleMessage(msg) {
             switch (msg.type) {
                 case 'Output':
-                    // Decode base64 and write to terminal
-                    const decoded = atob(msg.data);
-                    term.write(decoded);
+                    term.write(atob(msg.data));
                     break;
 
                 case 'Resize':
@@ -561,23 +527,17 @@
                     break;
 
                 case 'Info':
-                    console.log('Session info:', msg);
                     viewerCount.textContent = `${msg.viewers} viewer${msg.viewers !== 1 ? 's' : ''}`;
                     document.title = `TermShare - Session ${msg.session_id}`;
 
-                    // Handle input permission
                     inputAllowed = msg.input_allowed;
                     if (inputAllowed) {
                         inputMode.textContent = 'Interactive';
                         inputMode.className = 'input-mode interactive';
 
-                        // Connect keyboard input (only once)
                         if (!inputConnected) {
-                            term.onData((data) => {
-                                sendInput(data);
-                            });
+                            term.onData((data) => sendInput(data));
                             inputConnected = true;
-                            console.log('Input enabled - you can type in this terminal');
                         }
                     } else {
                         inputMode.textContent = 'View Only';
@@ -587,18 +547,12 @@
             }
         }
 
-        // Send input to server (for future interactive mode)
         function sendInput(data) {
             if (ws && ws.readyState === WebSocket.OPEN) {
-                const encoded = btoa(data);
-                ws.send(JSON.stringify({
-                    type: 'Input',
-                    data: encoded
-                }));
+                ws.send(JSON.stringify({ type: 'Input', data: btoa(data) }));
             }
         }
 
-        // Manual reconnect function (called from button)
         function manualReconnect() {
             reconnectAttempts = 0;
             overlay.classList.remove('hidden');
@@ -610,7 +564,6 @@
             connect();
         }
 
-        // Start by checking auth status
         checkAuthStatus();
     </script>
 </body>
