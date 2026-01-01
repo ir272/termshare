@@ -51,6 +51,10 @@ struct Args {
     /// Run a specific command instead of the default shell
     #[arg(short = 'c', long)]
     command: Option<String>,
+
+    /// Maximum number of concurrent viewers
+    #[arg(long)]
+    max_viewers: Option<usize>,
 }
 
 /// Get the local IP address for LAN sharing
@@ -90,8 +94,13 @@ async fn main() -> Result<()> {
     // Create channel for viewer input
     let (viewer_input_tx, viewer_input_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(100);
 
-    // Create server state with optional password and input permission
-    let state = Arc::new(ServerState::new(viewer_input_tx, password.clone(), args.allow_input));
+    // Create server state with optional password, input permission, and viewer limit
+    let state = Arc::new(ServerState::new(
+        viewer_input_tx,
+        password.clone(),
+        args.allow_input,
+        args.max_viewers,
+    ));
     let session_id = state.session_id.clone();
 
     // Warn if exposing without password
@@ -166,6 +175,7 @@ async fn main() -> Result<()> {
     println!("Session ID: {}", session_id);
     println!("Password protected: {}", if password.is_some() { "Yes" } else { "No" });
     println!("Viewer input: {}", if args.allow_input { "Enabled" } else { "View only" });
+    println!("Max viewers: {}", args.max_viewers.map_or("Unlimited".to_string(), |n| n.to_string()));
     if let Some(ref cmd) = args.command {
         println!("Command: {}", cmd);
     }

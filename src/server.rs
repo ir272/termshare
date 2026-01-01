@@ -86,10 +86,17 @@ pub struct ServerState {
     pub valid_tokens: RwLock<HashSet<String>>,
     /// Whether viewers are allowed to send input
     pub allow_input: bool,
+    /// Maximum number of concurrent viewers (None = unlimited)
+    pub max_viewers: Option<usize>,
 }
 
 impl ServerState {
-    pub fn new(input_tx: tokio::sync::mpsc::Sender<Vec<u8>>, password: Option<String>, allow_input: bool) -> Self {
+    pub fn new(
+        input_tx: tokio::sync::mpsc::Sender<Vec<u8>>,
+        password: Option<String>,
+        allow_input: bool,
+        max_viewers: Option<usize>,
+    ) -> Self {
         let (output_tx, _) = broadcast::channel(1024);
         let session_id = generate_session_id();
 
@@ -103,6 +110,7 @@ impl ServerState {
             password,
             valid_tokens: RwLock::new(HashSet::new()),
             allow_input,
+            max_viewers,
         }
     }
 
@@ -319,6 +327,14 @@ async fn websocket_handler(
             return Err(StatusCode::UNAUTHORIZED);
         }
     }
+
+    // Check viewer limit
+    if let Some(max) = state.max_viewers {
+        if *state.viewer_count.read().await >= max {
+            return Err(StatusCode::SERVICE_UNAVAILABLE);
+        }
+    }
+
     Ok(ws.on_upgrade(move |socket| handle_socket(socket, state)))
 }
 

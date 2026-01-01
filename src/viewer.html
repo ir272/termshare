@@ -408,6 +408,16 @@
                 reconnectAttempts = 0;
             };
 
+            // Handle connection errors (including 503 session full)
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+            };
+
+            // Note: 503 rejection happens before WebSocket opens, so we detect it
+            // by checking if we never connected and got an immediate close
+            let wasConnected = false;
+            ws.addEventListener('open', () => { wasConnected = true; });
+
             ws.onmessage = (event) => {
                 try {
                     const msg = JSON.parse(event.data);
@@ -417,11 +427,22 @@
                 }
             };
 
-            ws.onclose = () => {
-                console.log('Disconnected from terminal session');
+            ws.onclose = (event) => {
+                console.log('Disconnected from terminal session', event.code);
                 statusDot.classList.remove('connected');
                 statusDot.classList.add('disconnected');
                 statusText.textContent = 'Disconnected';
+
+                // Check if this was an immediate rejection (never connected)
+                // HTTP 503 results in code 1006 with immediate close
+                if (!wasConnected && reconnectAttempts === 0) {
+                    overlay.classList.remove('hidden');
+                    overlayContent.innerHTML = `
+                        <h2>Session Full</h2>
+                        <p>This session has reached its maximum number of viewers. Please try again later.</p>
+                    `;
+                    return;
+                }
 
                 // Try to reconnect
                 if (reconnectAttempts < maxReconnectAttempts) {
@@ -435,10 +456,6 @@
                         <p>The terminal session has ended or connection was lost.</p>
                     `;
                 }
-            };
-
-            ws.onerror = (error) => {
-                console.error('WebSocket error:', error);
             };
         }
 
