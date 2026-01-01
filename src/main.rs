@@ -203,10 +203,32 @@ async fn main() -> Result<()> {
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     // Run the main terminal session
-    run_session(state, viewer_input_rx, args.command).await?;
+    run_session(state.clone(), viewer_input_rx, args.command).await?;
+
+    // Print session statistics
+    let duration = state.session_start.elapsed();
+    let mins = duration.as_secs() / 60;
+    let secs = duration.as_secs() % 60;
+    let total_bytes = state.total_bytes.load(std::sync::atomic::Ordering::Relaxed);
+    let peak_viewers = state.peak_viewers.load(std::sync::atomic::Ordering::Relaxed);
+    let total_connections = state.total_connections.load(std::sync::atomic::Ordering::Relaxed);
 
     println!();
-    println!("Session ended. Goodbye!");
+    println!("Session ended.");
+    println!();
+    println!("Session Statistics:");
+    println!("  Duration: {}m {}s", mins, secs);
+    println!("  Peak viewers: {}", peak_viewers);
+    println!("  Total connections: {}", total_connections);
+    if total_bytes < 1024 {
+        println!("  Data transferred: {} bytes", total_bytes);
+    } else if total_bytes < 1024 * 1024 {
+        println!("  Data transferred: {:.1} KB", total_bytes as f64 / 1024.0);
+    } else {
+        println!("  Data transferred: {:.2} MB", total_bytes as f64 / (1024.0 * 1024.0));
+    }
+    println!();
+    println!("Goodbye!");
     Ok(())
 }
 

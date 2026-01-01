@@ -18,6 +18,7 @@ use axum::{
 use futures::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use tokio::sync::{broadcast, RwLock};
 
@@ -90,6 +91,14 @@ pub struct ServerState {
     pub max_viewers: Option<usize>,
     /// Channel for viewer connect/disconnect notifications
     pub notification_tx: broadcast::Sender<String>,
+    /// Session start time for duration tracking
+    pub session_start: std::time::Instant,
+    /// Total bytes transferred to viewers
+    pub total_bytes: AtomicU64,
+    /// Peak concurrent viewers
+    pub peak_viewers: AtomicUsize,
+    /// Total number of connections (including reconnects)
+    pub total_connections: AtomicUsize,
 }
 
 impl ServerState {
@@ -115,6 +124,10 @@ impl ServerState {
             allow_input,
             max_viewers,
             notification_tx,
+            session_start: std::time::Instant::now(),
+            total_bytes: AtomicU64::new(0),
+            peak_viewers: AtomicUsize::new(0),
+            total_connections: AtomicUsize::new(0),
         }
     }
 
@@ -143,6 +156,9 @@ impl ServerState {
 
     /// Broadcast terminal output to all viewers and store in buffer
     pub async fn broadcast_output(&self, data: &[u8]) {
+        // Track total bytes transferred
+        self.total_bytes.fetch_add(data.len() as u64, Ordering::Relaxed);
+
         // Store in buffer for new viewers
         {
             let mut buffer = self.terminal_buffer.write().await;
@@ -344,12 +360,18 @@ async fn websocket_handler(
 
 /// Handle an individual WebSocket connection
 async fn handle_socket(socket: WebSocket, state: Arc<ServerState>) {
+    // Track total connections
+    state.total_connections.fetch_add(1, Ordering::Relaxed);
+
     // Increment viewer count and send notification
     {
         let mut count = state.viewer_count.write().await;
         *count += 1;
         tracing::info!("Viewer connected. Total viewers: {}", *count);
         let _ = state.notification_tx.send(format!("Viewer connected ({} total)", *count));
+
+        // Update peak viewers if this is a new high
+        state.peak_viewers.fetch_max(*count, Ordering::Relaxed);
     }
 
     // Subscribe to terminal output broadcasts
