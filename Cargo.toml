@@ -42,3 +42,16 @@ clap = { version = "4", features = ["derive"] }
 
 # Password input (hidden)
 rpassword = "7"
+
+# For cloudflared auto-download (tunnel feature)
+reqwest = { version = "0.11", features = ["stream"] }
+tokio-util = { version = "0.7", features = ["io"] }
+dirs = "5"
+which = "6"
+regex = "1"
+flate2 = "1"
+tar = "0.4"
+
+# For Unix signal handling
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

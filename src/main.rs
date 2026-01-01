@@ -6,6 +6,7 @@
 mod pty;
 mod server;
 mod terminal;
+mod tunnel;
 
 use anyhow::Result;
 use clap::Parser;
@@ -42,6 +43,10 @@ struct Args {
     /// Allow viewers to send input to the terminal
     #[arg(long)]
     allow_input: bool,
+
+    /// Create a public tunnel (share over the internet with HTTPS)
+    #[arg(long)]
+    public: bool,
 }
 
 /// Get the local IP address for LAN sharing
@@ -101,20 +106,58 @@ async fn main() -> Result<()> {
         println!("   Strongly consider using --password for security.");
     }
 
+    // Warn if public without password
+    if args.public && password.is_none() {
+        println!();
+        println!("⚠️  WARNING: Public sharing without password protection!");
+        println!("   Anyone on the internet can view this terminal.");
+        println!("   Strongly consider using --password for security.");
+    }
+
+    // Start public tunnel if requested
+    let _tunnel = if args.public {
+        println!();
+        println!("Starting public tunnel...");
+        match tunnel::start_tunnel(args.port).await {
+            Ok(t) => {
+                println!("Tunnel established!");
+                Some(t)
+            }
+            Err(e) => {
+                println!("Failed to start tunnel: {}", e);
+                println!("Continuing with local-only access.");
+                None
+            }
+        }
+    } else {
+        None
+    };
+
     // Print startup banner
     println!();
     println!("TermShare v0.1.0 - Terminal Sharing Tool");
     println!("=========================================");
     println!();
-    if args.expose {
+
+    // Show URLs based on mode
+    if let Some(ref t) = _tunnel {
+        println!("🌐 Public URL: {}", t.url);
+        println!("   (HTTPS secured, anyone can connect)");
+        println!();
+        println!("Local URL:  http://localhost:{}", args.port);
+    } else if args.expose {
         println!("Local URL:   http://localhost:{}", args.port);
         if let Some(ip) = get_local_ip() {
             println!("Network URL: http://{}:{}", ip, args.port);
         }
+        println!();
+        println!("(Use --public to share over the internet)");
     } else {
         println!("Share URL: http://localhost:{}", args.port);
-        println!("(Use --expose to allow network access)");
+        println!();
+        println!("(Use --expose for LAN, --public for internet)");
     }
+
     println!();
     println!("Session ID: {}", session_id);
     println!("Password protected: {}", if password.is_some() { "Yes" } else { "No" });
@@ -125,9 +168,10 @@ async fn main() -> Result<()> {
     println!();
 
     // Start web server in background
+    // Enable expose if public tunnel is active (need to bind to 0.0.0.0)
     let server_state = state.clone();
     let port = args.port;
-    let expose = args.expose;
+    let expose = args.expose || args.public;
     tokio::spawn(async move {
         if let Err(e) = server::start_server(server_state, port, expose).await {
             tracing::error!("Server error: {}", e);
