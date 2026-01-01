@@ -38,6 +38,10 @@ struct Args {
     /// Expose to local network (bind to 0.0.0.0 instead of localhost)
     #[arg(long)]
     expose: bool,
+
+    /// Allow viewers to send input to the terminal
+    #[arg(long)]
+    allow_input: bool,
 }
 
 /// Get the local IP address for LAN sharing
@@ -77,8 +81,8 @@ async fn main() -> Result<()> {
     // Create channel for viewer input
     let (viewer_input_tx, viewer_input_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(100);
 
-    // Create server state with optional password
-    let state = Arc::new(ServerState::new(viewer_input_tx, password.clone()));
+    // Create server state with optional password and input permission
+    let state = Arc::new(ServerState::new(viewer_input_tx, password.clone(), args.allow_input));
     let session_id = state.session_id.clone();
 
     // Warn if exposing without password
@@ -87,6 +91,14 @@ async fn main() -> Result<()> {
         println!("⚠️  WARNING: Exposing to network without password protection!");
         println!("   Anyone on your network can view this terminal.");
         println!("   Consider using --password for security.");
+    }
+
+    // Warn if allowing input without password
+    if args.allow_input && password.is_none() {
+        println!();
+        println!("⚠️  WARNING: Input enabled without password protection!");
+        println!("   Anyone who connects can run commands in your terminal.");
+        println!("   Strongly consider using --password for security.");
     }
 
     // Print startup banner
@@ -106,6 +118,7 @@ async fn main() -> Result<()> {
     println!();
     println!("Session ID: {}", session_id);
     println!("Password protected: {}", if password.is_some() { "Yes" } else { "No" });
+    println!("Viewer input: {}", if args.allow_input { "Enabled" } else { "View only" });
     println!();
     println!("Starting shell session...");
     println!("Press Ctrl+Q to exit");

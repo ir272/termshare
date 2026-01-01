@@ -65,6 +65,23 @@
             color: #888;
         }
 
+        .input-mode {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: 500;
+        }
+
+        .input-mode.interactive {
+            background: #4ade8033;
+            color: #4ade80;
+        }
+
+        .input-mode.view-only {
+            background: #88888833;
+            color: #888;
+        }
+
         .terminal-container {
             flex: 1;
             padding: 10px;
@@ -210,6 +227,7 @@
                 <span id="status-text">Connecting...</span>
             </span>
             <span class="viewer-count" id="viewer-count"></span>
+            <span class="input-mode" id="input-mode"></span>
         </div>
     </header>
 
@@ -286,6 +304,11 @@
         const statusDot = document.getElementById('status-dot');
         const statusText = document.getElementById('status-text');
         const viewerCount = document.getElementById('viewer-count');
+        const inputMode = document.getElementById('input-mode');
+
+        // Input state
+        let inputAllowed = false;
+        let inputConnected = false;
 
         // WebSocket connection
         const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -435,6 +458,25 @@
                     console.log('Session info:', msg);
                     viewerCount.textContent = `${msg.viewers} viewer${msg.viewers !== 1 ? 's' : ''}`;
                     document.title = `TermShare - Session ${msg.session_id}`;
+
+                    // Handle input permission
+                    inputAllowed = msg.input_allowed;
+                    if (inputAllowed) {
+                        inputMode.textContent = 'Interactive';
+                        inputMode.className = 'input-mode interactive';
+
+                        // Connect keyboard input (only once)
+                        if (!inputConnected) {
+                            term.onData((data) => {
+                                sendInput(data);
+                            });
+                            inputConnected = true;
+                            console.log('Input enabled - you can type in this terminal');
+                        }
+                    } else {
+                        inputMode.textContent = 'View Only';
+                        inputMode.className = 'input-mode view-only';
+                    }
                     break;
             }
         }

@@ -30,7 +30,7 @@ pub enum ServerMessage {
     /// Terminal was resized
     Resize { cols: u16, rows: u16 },
     /// Session info
-    Info { session_id: String, viewers: usize },
+    Info { session_id: String, viewers: usize, input_allowed: bool },
 }
 
 /// Messages sent from viewer to server
@@ -84,10 +84,12 @@ pub struct ServerState {
     pub password: Option<String>,
     /// Valid authentication tokens
     pub valid_tokens: RwLock<HashSet<String>>,
+    /// Whether viewers are allowed to send input
+    pub allow_input: bool,
 }
 
 impl ServerState {
-    pub fn new(input_tx: tokio::sync::mpsc::Sender<Vec<u8>>, password: Option<String>) -> Self {
+    pub fn new(input_tx: tokio::sync::mpsc::Sender<Vec<u8>>, password: Option<String>, allow_input: bool) -> Self {
         let (output_tx, _) = broadcast::channel(1024);
         let session_id = generate_session_id();
 
@@ -100,6 +102,7 @@ impl ServerState {
             terminal_buffer: RwLock::new(Vec::with_capacity(MAX_BUFFER_SIZE)),
             password,
             valid_tokens: RwLock::new(HashSet::new()),
+            allow_input,
         }
     }
 
@@ -341,6 +344,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<ServerState>) {
     let info_msg = ServerMessage::Info {
         session_id: state.session_id.clone(),
         viewers: viewer_count,
+        input_allowed: state.allow_input,
     };
     let _ = sender.send(Message::Text(serde_json::to_string(&info_msg).unwrap().into())).await;
 
@@ -358,6 +362,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<ServerState>) {
 
     // Clone state for the receiver task
     let state_clone = state.clone();
+    let allow_input = state.allow_input;
 
     // Task to forward broadcasts to this viewer
     let send_task = tokio::spawn(async move {
@@ -376,9 +381,11 @@ async fn handle_socket(socket: WebSocket, state: Arc<ServerState>) {
                 if let Ok(client_msg) = serde_json::from_str::<ClientMessage>(&text) {
                     match client_msg {
                         ClientMessage::Input { data } => {
-                            // Decode base64 and send to PTY
-                            if let Ok(bytes) = base64_decode(&data) {
-                                let _ = state_clone.input_tx.send(bytes).await;
+                            // Only forward input if allowed
+                            if allow_input {
+                                if let Ok(bytes) = base64_decode(&data) {
+                                    let _ = state_clone.input_tx.send(bytes).await;
+                                }
                             }
                         }
                         ClientMessage::RequestControl => {
